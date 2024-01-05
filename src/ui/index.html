@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call App</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f8f9fa;
+        }
+
+        #app {
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .videos {
+            display: flex;
+        }
+
+        #localVideo,
+        #remoteVideo {
+            width: 50%;
+            height: auto;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+        }
+
+        #keyInput {
+            padding: 8px;
+            margin-bottom: 10px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #startButton,
+        #hangupButton {
+            padding: 10px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <h1>Video Call App</h1>
+        <div id="serverKey"></div>
+        <div class="videos">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <video id="remoteVideo" autoplay playsinline></video>
+        </div>
+        <input type="text" id="keyInput" placeholder="Enter Key">
+        <button id="startButton">Start Call</button>
+        <button id="hangupButton">Hang Up</button>
+    </div>
+
+    <script>
+        const { ipcRenderer } = window.electron;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get the video element
+            const localVideoElement = document.getElementById('localVideo');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Request access to the user's camera
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then((stream) => {
+                    // Set the video stream as the source for the video element
+                    localVideoElement.srcObject = stream;
+
+                    setInterval(() => {
+                        // Capture a frame from the video element
+                        ctx.drawImage(localVideoElement, 0, 0, localVideoElement.width, localVideoElement.height);
+                        const frameData = canvas.toDataURL('image/jpeg');
+
+                        // Send the frame data to the main process
+                        ipcRenderer.send('localVideoFrame', frameData);
+                    }, 1000 / 30); // Capture frames at approximately 30 frames per second
+
+                })
+                .catch((error) => {
+                    console.error('Error accessing the camera:', error);
+                });
+
+            let startButton = document.getElementById('startButton');
+            startButton.addEventListener('click', () => {
+                const keyInput = document.getElementById('keyInput').value;
+                console.log(keyInput);
+                const encoder = new TextEncoder();
+                const myUint8Array = encoder.encode(keyInput);
+                ipcRenderer.send('connect-to-server', myUint8Array);
+            })
+
+            const hangupButton = document.getElementById('hangupButton');
+            hangupButton.addEventListener('click', () => {
+                ipcRenderer.send('disconnect-from-server');
+            });
+
+            ipcRenderer.on('serverKey', (event, data) => {
+                // Handle the data received from the main process
+                console.log('Data received in the renderer process:', data);
+                document.getElementById('serverKey').textContent = data;
+                // You can process or display the data as needed
+            });
+
+            // lets now handle the remote video data;
+            ipcRenderer.on('remoteVideo', (event, data) => {
+                // Get the video element
+                const remoteVideoElement = document.getElementById('remoteVideo');
+                remoteVideoElement.srcObject = data.stream;
+            });
+        });
+    </script>
+</body>
+
+</html>
